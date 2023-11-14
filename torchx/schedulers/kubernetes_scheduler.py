@@ -166,6 +166,7 @@ LABEL_UNIQUE_NAME = "app.kubernetes.io/instance"
 ANNOTATION_ISTIO_SIDECAR = "sidecar.istio.io/inject"
 
 LABEL_INSTANCE_TYPE = "node.kubernetes.io/instance-type"
+LABEL_GKE_NODEPOOL = "cloud.google.com/gke-nodepool"
 
 
 def sanitize_for_serialization(obj: object) -> object:
@@ -190,6 +191,7 @@ def role_to_pod(name: str, role: Role, service_account: Optional[str]) -> "V1Pod
         V1SecurityContext,
         V1Volume,
         V1VolumeMount,
+        V1Toleration
     )
 
     # limits puts an upper cap on the resources a pod may consume.
@@ -209,8 +211,15 @@ def role_to_pod(name: str, role: Role, service_account: Optional[str]) -> "V1Pod
         limits["memory"] = f"{int(resource.memMB)}M"
         request_memMB = max(int(resource.memMB) - RESERVED_MEMMB, 0)
         requests["memory"] = f"{request_memMB}M"
+    tolerations: List[V1Toleration] = []
     if resource.gpu > 0:
-        requests["nvidia.com/gpu"] = limits["nvidia.com/gpu"] = str(resource.gpu)
+        toleration_rule = V1Toleration(
+            key="nvidia.com/gpu",
+            operator="Equal",
+            value="present",
+            effect="NoSchedule"
+        )
+        tolerations = [toleration_rule]
 
     for device_name, device_limit in resource.devices.items():
         limits[device_name] = str(device_limit)
@@ -223,6 +232,8 @@ def role_to_pod(name: str, role: Role, service_account: Optional[str]) -> "V1Pod
     node_selector: Dict[str, str] = {}
     if LABEL_INSTANCE_TYPE in resource.capabilities:
         node_selector[LABEL_INSTANCE_TYPE] = resource.capabilities[LABEL_INSTANCE_TYPE]
+    if LABEL_GKE_NODEPOOL in resource.capabilities:
+        node_selector[LABEL_GKE_NODEPOOL] = resource.capabilities[LABEL_GKE_NODEPOOL]
 
     # To support PyTorch dataloaders we need to set /dev/shm to larger than the
     # 64M default so we mount an unlimited sized tmpfs directory on it.
@@ -326,6 +337,7 @@ def role_to_pod(name: str, role: Role, service_account: Optional[str]) -> "V1Pod
             service_account_name=service_account,
             volumes=volumes,
             node_selector=node_selector,
+            tolerations=tolerations
         ),
         metadata=V1ObjectMeta(
             annotations={
