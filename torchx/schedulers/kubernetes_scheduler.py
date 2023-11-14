@@ -69,6 +69,7 @@ from torchx.specs.api import (
     Role,
     RoleStatus,
     runopts,
+    SecretMount,
     VolumeMount,
 )
 from torchx.util.strings import normalize_str
@@ -213,7 +214,7 @@ def role_to_pod(name: str, role: Role, service_account: Optional[str]) -> "V1Pod
         requests["memory"] = f"{request_memMB}M"
     tolerations: List[V1Toleration] = []
     if resource.gpu > 0:
-        requests["nvidia.com/gpu"] = limits["nvidia.com/gpu"] = str(resource.gpu)
+        # requests["nvidia.com/gpu"] = limits["nvidia.com/gpu"] = str(resource.gpu)
         toleration_rule = V1Toleration(
             key="nvidia.com/gpu",
             operator="Equal",
@@ -305,6 +306,19 @@ def role_to_pod(name: str, role: Role, service_account: Optional[str]) -> "V1Pod
                 )
             )
             security_context.privileged = True
+        elif isinstance(mount, SecretMount):
+            volumes.append(
+                V1Volume(
+                    name=mount_name,
+                    secret={"secretName": mount.secret}
+                )
+            )
+            volume_mounts.append(
+                V1VolumeMount(
+                    name=mount_name,
+                    mount_path=mount.dst_path
+                )
+            )
         else:
             raise TypeError(f"unknown mount type {mount}")
 

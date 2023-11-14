@@ -8,7 +8,7 @@ import argparse
 import inspect
 from typing import Any, Callable, Dict, List, Mapping, Optional, Union
 
-from torchx.specs.api import BindMount, MountType, VolumeMount
+from torchx.specs.api import BindMount, MountType, VolumeMount, SecretMount
 from torchx.specs.file_linter import get_fn_docstring, TorchXArgumentHelpFormatter
 from torchx.util.types import (
     decode_from_string,
@@ -166,6 +166,7 @@ _MOUNT_OPT_MAP: Mapping[str, str] = {
     "source": "src",
     "src": "src",
     "perm": "perm",
+    "secret": "secret"
 }
 
 
@@ -184,6 +185,7 @@ def parse_mounts(opts: List[str]) -> List[Union[BindMount, VolumeMount, DeviceMo
         BindMount: type=bind,src=<host path>,dst=<container path>[,readonly]
         VolumeMount: type=volume,src=<name/id>,dst=<container path>[,readonly]
         DeviceMount: type=device,src=/dev/<dev>[,dst=<container path>][,perm=rwm]
+        SecretMount: type=secret,secret=<k8s secret name>,dst=<container path>
     """
     mount_opts = []
     cur = {}
@@ -228,6 +230,12 @@ def parse_mounts(opts: List[str]) -> List[Union[BindMount, VolumeMount, DeviceMo
                         f"{c} is not a valid permission flags must one of r,w,m"
                     )
             mounts.append(DeviceMount(src_path=src, dst_path=dst, permissions=perm))
+        elif typ == MountType.SECRET:
+            mounts.append(
+                SecretMount(
+                    secret=opts["secret"], dst_path=opts["dst"]
+                )
+            )
         else:
             valid = list(str(item.value) for item in MountType)
             raise ValueError(f"invalid mount type {repr(typ)}, must be one of {valid}")

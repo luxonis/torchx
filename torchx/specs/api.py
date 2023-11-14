@@ -226,6 +226,7 @@ class MountType(str, Enum):
     BIND = "bind"
     VOLUME = "volume"
     DEVICE = "device"
+    SECRET = "secret"
 
 
 @dataclass
@@ -274,6 +275,19 @@ class DeviceMount:
     src_path: str
     dst_path: str
     permissions: str = "rwm"
+
+
+@dataclass
+class SecretMount:
+    """
+    Defines a kubernetes secret file to mount into the container.
+    Args:
+       secret: the name of the kubernetes secret
+       dst_path: the path in the worker environment/container
+    """
+
+    secret: str
+    dst_path: str
 
 
 @dataclass
