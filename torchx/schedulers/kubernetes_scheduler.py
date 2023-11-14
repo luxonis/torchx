@@ -213,6 +213,7 @@ def role_to_pod(name: str, role: Role, service_account: Optional[str]) -> "V1Pod
         requests["memory"] = f"{request_memMB}M"
     tolerations: List[V1Toleration] = []
     if resource.gpu > 0:
+        requests["nvidia.com/gpu"] = limits["nvidia.com/gpu"] = str(resource.gpu)
         toleration_rule = V1Toleration(
             key="nvidia.com/gpu",
             operator="Equal",
