@@ -82,7 +82,7 @@ if TYPE_CHECKING:
     from kubernetes.client import ApiClient, CustomObjectsApi
     from kubernetes.client.models import (  # noqa: F401 imported but unused
         V1Container,
-        V1Pod,
+        V1Pod
     )
     from kubernetes.client.rest import ApiException
 
@@ -177,7 +177,7 @@ def sanitize_for_serialization(obj: object) -> object:
     return api.sanitize_for_serialization(obj)
 
 
-def role_to_pod(name: str, role: Role, service_account: Optional[str]) -> "V1Pod":
+def role_to_pod(name: str, role: Role, service_account: Optional[str], image_secret: Optional[str]) -> "V1Pod":
     from kubernetes.client.models import (  # noqa: F811 redefinition of unused
         V1Container,
         V1ContainerPort,
@@ -192,7 +192,8 @@ def role_to_pod(name: str, role: Role, service_account: Optional[str]) -> "V1Pod
         V1SecurityContext,
         V1Volume,
         V1VolumeMount,
-        V1Toleration
+        V1Toleration,
+        V1LocalObjectReference
     )
 
     # limits puts an upper cap on the resources a pod may consume.
@@ -346,9 +347,11 @@ def role_to_pod(name: str, role: Role, service_account: Optional[str]) -> "V1Pod
         security_context=security_context,
     )
 
+    imagesecret = V1LocalObjectReference(name=image_secret)
     return V1Pod(
         spec=V1PodSpec(
             containers=[container],
+            image_pull_secrets=[imagesecret],
             restart_policy="Never",
             service_account_name=service_account,
             volumes=volumes,
@@ -371,6 +374,7 @@ def app_to_resource(
     queue: str,
     service_account: Optional[str],
     priority_class: Optional[str] = None,
+    image_secret: Optional[str] = None
 ) -> Dict[str, object]:
     """
     app_to_resource creates a volcano job kubernetes resource definition from
@@ -402,7 +406,7 @@ def app_to_resource(
             if role_idx == 0 and replica_id == 0:
                 replica_role.env["TORCHX_RANK0_HOST"] = "localhost"
 
-            pod = role_to_pod(name, replica_role, service_account)
+            pod = role_to_pod(name, replica_role, service_account, image_secret)
             pod.metadata.labels.update(
                 pod_labels(
                     app=app,
@@ -472,6 +476,7 @@ class KubernetesOpts(TypedDict, total=False):
     image_repo: Optional[str]
     service_account: Optional[str]
     priority_class: Optional[str]
+    image_secret: Optional[str]
 
 
 class KubernetesScheduler(DockerWorkspaceMixin, Scheduler[KubernetesOpts]):
@@ -656,7 +661,12 @@ class KubernetesScheduler(DockerWorkspaceMixin, Scheduler[KubernetesOpts]):
             priority_class, str
         ), "priority_class must be a str"
 
-        resource = app_to_resource(app, queue, service_account, priority_class)
+        image_secret = cfg.get("image_secret")
+        assert image_secret is None or isinstance(
+            image_secret, str
+        ), "image_secret must be a str"
+
+        resource = app_to_resource(app, queue, service_account, priority_class, image_secret)
         req = KubernetesJob(
             resource=resource,
             images_to_push=images_to_push,
@@ -700,6 +710,11 @@ class KubernetesScheduler(DockerWorkspaceMixin, Scheduler[KubernetesOpts]):
             "priority_class",
             type_=str,
             help="The name of the PriorityClass to set on the job specs",
+        )
+        opts.add(
+            "image_secret",
+            type_=str,
+            help="The name of the Kubernetes/OpenShift secret set up for private images",
         )
         return opts
 
